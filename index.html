@@ -5,7 +5,6 @@
     <title>Chihiro PS Store</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <style>
-        /* Vita-inspired color palette and basic layout */
         body {
             font-family: 'Segoe UI', Arial, sans-serif;
             background: linear-gradient(135deg, #223366 0%, #355ccc 100%);
@@ -97,6 +96,13 @@
             font-size: 0.85rem;
             color: #8cc0ff;
         }
+        .store-link {
+            margin-top: 0.3em;
+            font-size: 0.9em;
+            color: #ffd966;
+            text-decoration: underline;
+            word-break: break-all;
+        }
         .loading {
             text-align: center;
             margin: 3rem 0;
@@ -118,7 +124,7 @@
 <body>
     <header>
         <img src="logo.png" alt="PS Store Logo" />
-        <h1>PS Store</h1>
+        <h1>Chihiro PS Store</h1>
     </header>
     <main>
         <section class="search-bar">
@@ -126,8 +132,9 @@
             <select id="type-select">
                 <option value="">All Types</option>
                 <option value="PSV">PS Vita</option>
-                <option value="PSX">PS1 Classics</option>
+                <option value="PS3">PS3</option>
                 <option value="PSP">PSP</option>
+                <option value="PSX">PS1 Classic</option>
                 <option value="DLC">DLC</option>
                 <option value="Theme">Theme</option>
             </select>
@@ -139,13 +146,15 @@
                 <option value="ASIA">ASIA</option>
                 <option value="CHN">CHN</option>
                 <option value="KOR">KOR</option>
+                <option value="EU">EU</option>
             </select>
         </section>
         <div id="store-list" class="store-list"></div>
         <div id="loading" class="loading">Loading store data...</div>
     </main>
     <script>
-        const STORE_JSON_URL = "https://raw.githubusercontent.com/SSMG4/NPS-Chihiro/refs/heads/master/chihiro.json";
+        const STORE_JSON_URL = "https://raw.githubusercontent.com/SSMG4/NPS-Chihiro/master/chihiro.json";
+        // ^^^ Use /master/ not /refs/heads/master/ for raw.githubusercontent.com!
         const storeList = document.getElementById('store-list');
         const loadingElem = document.getElementById('loading');
         const searchInput = document.getElementById('search-input');
@@ -155,30 +164,26 @@
         let storeData = [];
         let filteredStoreData = [];
 
-        // Helper: Get image url for entry
+        // Helper: Get image url for entry (no icon in chihiro, so use titleID for NPS or fallback)
         function getImageUrl(entry) {
-            // Use NPS CDN if available, fallback to placeholder
-            if (entry.icon) {
-                // Use NPS CDN for icons
-                return `https://nopaystation.com/ts/${entry.id}.png`;
+            if (entry.platform && (entry.platform === "PSV" || entry.platform === "PSP" || entry.platform === "PS3" || entry.platform === "PSX")) {
+                // Try NPS CDN: https://nopaystation.com/ts/{titleID}.png
+                return `https://nopaystation.com/ts/${entry.titleID}.png`;
             }
-            // Otherwise, fallback to placeholder
             return "https://via.placeholder.com/320x180?text=No+Image";
         }
 
-        // Helper: Get type string for entry
         function getType(entry) {
-            if(entry.cat) {
-                if(entry.cat === 'PSV') return 'PS Vita';
-                if(entry.cat === 'PSX') return 'PS1 Classic';
-                if(entry.cat === 'PSP') return 'PSP';
-                if(entry.cat === 'DLC') return 'DLC';
-                if(entry.cat === 'Theme') return 'Theme';
-            }
-            return entry.cat || 'Other';
+            // Use platform as type
+            if (entry.platform === 'PSV') return 'PS Vita';
+            if (entry.platform === 'PSX') return 'PS1 Classic';
+            if (entry.platform === 'PSP') return 'PSP';
+            if (entry.platform === 'PS3') return 'PS3';
+            if (entry.platform === 'DLC') return 'DLC';
+            if (entry.platform === 'Theme') return 'Theme';
+            return entry.platform || 'Other';
         }
 
-        // Helper: Get region
         function getRegion(entry) {
             return entry.region || '';
         }
@@ -196,12 +201,13 @@
                 const div = document.createElement('div');
                 div.className = 'store-item';
                 div.innerHTML = `
-                    <img src="${getImageUrl(entry)}" alt="Cover for ${entry.title.replace(/"/g, '&quot;')}" loading="lazy">
+                    <img src="${getImageUrl(entry)}" alt="Cover for ${(entry.name||'').replace(/"/g, '&quot;')}" loading="lazy" onerror="this.onerror=null;this.src='https://via.placeholder.com/320x180?text=No+Image';">
                     <div class="store-item-info">
-                        <div class="store-title">${entry.title || 'Unknown Title'}</div>
-                        <div class="store-id">${entry.id || ''}</div>
+                        <div class="store-title">${entry.name || 'Unknown Title'}</div>
+                        <div class="store-id">${entry.titleID || ''}</div>
                         <div class="store-region">Region: ${getRegion(entry)}</div>
                         <div class="store-type">Type: ${getType(entry)}</div>
+                        ${entry.link_ok && entry.link ? `<a class="store-link" href="${entry.link}" target="_blank">Download PKG</a>` : ''}
                     </div>
                 `;
                 storeList.appendChild(div);
@@ -214,17 +220,18 @@
             const type = typeSelect.value;
             const region = regionSelect.value;
             filteredStoreData = storeData.filter(entry => {
-                // Search filter
                 let matches = true;
+                // Search filter (by name, titleID, contentID)
                 if (query) {
                     matches = (
-                        (entry.title && entry.title.toLowerCase().includes(query)) ||
-                        (entry.id && entry.id.toLowerCase().includes(query))
+                        (entry.name && entry.name.toLowerCase().includes(query)) ||
+                        (entry.titleID && entry.titleID.toLowerCase().includes(query)) ||
+                        (entry.contentID && entry.contentID.toLowerCase().includes(query))
                     );
                 }
-                // Type filter
+                // Type filter (platform)
                 if (matches && type) {
-                    matches = entry.cat === type;
+                    matches = entry.platform === type;
                 }
                 // Region filter
                 if (matches && region) {
@@ -253,11 +260,14 @@
             try {
                 const resp = await fetch(STORE_JSON_URL);
                 if (!resp.ok) throw new Error('Failed to fetch store data.');
-                // Stream JSON parsing for large files
                 const text = await resp.text();
-                // Avoid blocking the main thread
-                await new Promise(resolve => setTimeout(resolve, 0));
-                storeData = JSON.parse(text);
+                // JSON is { games: [...] }
+                const json = JSON.parse(text);
+                if (json && Array.isArray(json.games)) {
+                    storeData = json.games;
+                } else {
+                    throw new Error('Invalid JSON structure: missing .games');
+                }
                 loadingElem.style.display = 'none';
                 filterStore();
             } catch (e) {
