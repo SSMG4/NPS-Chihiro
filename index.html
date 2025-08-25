@@ -1,0 +1,273 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>PS Vita Store (Fan-Made)</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <style>
+        /* Vita-inspired color palette and basic layout */
+        body {
+            font-family: 'Segoe UI', Arial, sans-serif;
+            background: linear-gradient(135deg, #223366 0%, #355ccc 100%);
+            color: #fff;
+            margin: 0;
+            padding: 0;
+            min-height: 100vh;
+        }
+        header {
+            background: rgba(0,0,0,0.50);
+            padding: 1rem 2rem;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            border-bottom: 2px solid #2e4b9c;
+        }
+        header img {
+            height: 48px;
+        }
+        header h1 {
+            font-size: 2rem;
+            margin: 0 0 0 1rem;
+            font-weight: 700;
+            letter-spacing: 2px;
+            display: inline-block;
+            vertical-align: middle;
+        }
+        main {
+            max-width: 1200px;
+            margin: 2rem auto;
+            padding: 1rem;
+            background: rgba(24, 34, 68, 0.92);
+            border-radius: 16px;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.2);
+        }
+        .search-bar {
+            display: flex;
+            gap: 1rem;
+            margin-bottom: 2rem;
+        }
+        .search-bar input, .search-bar select {
+            padding: 0.6rem;
+            border: none;
+            border-radius: 8px;
+            font-size: 1rem;
+        }
+        .search-bar input[type="text"] {
+            flex: 1;
+        }
+        .store-list {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+            gap: 1.5rem;
+        }
+        .store-item {
+            background: rgba(40, 60, 120, 0.93);
+            border-radius: 14px;
+            overflow: hidden;
+            box-shadow: 0 2px 12px rgba(0,0,0,0.09);
+            display: flex;
+            flex-direction: column;
+            transition: transform .12s;
+        }
+        .store-item:hover {
+            transform: scale(1.04);
+        }
+        .store-item img {
+            width: 100%;
+            height: 180px;
+            object-fit: cover;
+            background: #111;
+        }
+        .store-item-info {
+            padding: 1rem;
+            display: flex;
+            flex-direction: column;
+            gap: 0.4rem;
+        }
+        .store-title {
+            font-size: 1.1rem;
+            font-weight: 600;
+            color: #fffb;
+        }
+        .store-id {
+            font-size: 0.92rem;
+            color: #aac8ff;
+        }
+        .store-region, .store-type {
+            font-size: 0.85rem;
+            color: #8cc0ff;
+        }
+        .loading {
+            text-align: center;
+            margin: 3rem 0;
+            font-size: 1.3rem;
+        }
+        @media (max-width: 600px) {
+            main {
+                margin: 0.5rem;
+                padding: 0.5rem;
+            }
+            header {
+                flex-direction: column;
+                align-items: flex-start;
+                gap: 0.8rem;
+            }
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <img src="https://upload.wikimedia.org/wikipedia/commons/9/9b/Playstation_logo_colour.svg" alt="PlayStation Logo" />
+        <h1>Vita Store</h1>
+    </header>
+    <main>
+        <section class="search-bar">
+            <input type="text" id="search-input" placeholder="Search for a game, title id...">
+            <select id="type-select">
+                <option value="">All Types</option>
+                <option value="PSV">PS Vita</option>
+                <option value="PSX">PS1 Classics</option>
+                <option value="PSP">PSP</option>
+                <option value="DLC">DLC</option>
+                <option value="Theme">Theme</option>
+            </select>
+            <select id="region-select">
+                <option value="">All Regions</option>
+                <option value="USA">USA</option>
+                <option value="EUR">EUR</option>
+                <option value="JPN">JPN</option>
+                <option value="ASIA">ASIA</option>
+                <option value="CHN">CHN</option>
+                <option value="KOR">KOR</option>
+            </select>
+        </section>
+        <div id="store-list" class="store-list"></div>
+        <div id="loading" class="loading">Loading store data...</div>
+    </main>
+    <script>
+        const STORE_JSON_URL = "https://raw.githubusercontent.com/SSMG4/NPS-Chihiro/refs/heads/master/chihiro.json";
+        const storeList = document.getElementById('store-list');
+        const loadingElem = document.getElementById('loading');
+        const searchInput = document.getElementById('search-input');
+        const typeSelect = document.getElementById('type-select');
+        const regionSelect = document.getElementById('region-select');
+
+        let storeData = [];
+        let filteredStoreData = [];
+
+        // Helper: Get image url for entry
+        function getImageUrl(entry) {
+            // Use NPS CDN if available, fallback to placeholder
+            if (entry.icon) {
+                // Use NPS CDN for icons
+                return `https://nopaystation.com/ts/${entry.id}.png`;
+            }
+            // Otherwise, fallback to placeholder
+            return "https://via.placeholder.com/320x180?text=No+Image";
+        }
+
+        // Helper: Get type string for entry
+        function getType(entry) {
+            if(entry.cat) {
+                if(entry.cat === 'PSV') return 'PS Vita';
+                if(entry.cat === 'PSX') return 'PS1 Classic';
+                if(entry.cat === 'PSP') return 'PSP';
+                if(entry.cat === 'DLC') return 'DLC';
+                if(entry.cat === 'Theme') return 'Theme';
+            }
+            return entry.cat || 'Other';
+        }
+
+        // Helper: Get region
+        function getRegion(entry) {
+            return entry.region || '';
+        }
+
+        // Render store items
+        function renderStore(data) {
+            storeList.innerHTML = '';
+            if (!data.length) {
+                storeList.innerHTML = '<div style="grid-column: 1/-1; text-align: center; color: #fff8;">No results found.</div>';
+                return;
+            }
+            // Only show first 60 results for performance
+            const displayData = data.slice(0, 60);
+            for (const entry of displayData) {
+                const div = document.createElement('div');
+                div.className = 'store-item';
+                div.innerHTML = `
+                    <img src="${getImageUrl(entry)}" alt="Cover for ${entry.title.replace(/"/g, '&quot;')}" loading="lazy">
+                    <div class="store-item-info">
+                        <div class="store-title">${entry.title || 'Unknown Title'}</div>
+                        <div class="store-id">${entry.id || ''}</div>
+                        <div class="store-region">Region: ${getRegion(entry)}</div>
+                        <div class="store-type">Type: ${getType(entry)}</div>
+                    </div>
+                `;
+                storeList.appendChild(div);
+            }
+        }
+
+        // Filter store data
+        function filterStore() {
+            const query = searchInput.value.trim().toLowerCase();
+            const type = typeSelect.value;
+            const region = regionSelect.value;
+            filteredStoreData = storeData.filter(entry => {
+                // Search filter
+                let matches = true;
+                if (query) {
+                    matches = (
+                        (entry.title && entry.title.toLowerCase().includes(query)) ||
+                        (entry.id && entry.id.toLowerCase().includes(query))
+                    );
+                }
+                // Type filter
+                if (matches && type) {
+                    matches = entry.cat === type;
+                }
+                // Region filter
+                if (matches && region) {
+                    matches = entry.region === region;
+                }
+                return matches;
+            });
+            renderStore(filteredStoreData);
+        }
+
+        // Debounce for search input
+        let debounceTimer;
+        function debounceFilter() {
+            clearTimeout(debounceTimer);
+            debounceTimer = setTimeout(filterStore, 200);
+        }
+
+        // Attach listeners
+        searchInput.addEventListener('input', debounceFilter);
+        typeSelect.addEventListener('change', filterStore);
+        regionSelect.addEventListener('change', filterStore);
+
+        // Fetch and process JSON
+        async function fetchStoreData() {
+            loadingElem.textContent = 'Loading store data (large file, please wait)...';
+            try {
+                const resp = await fetch(STORE_JSON_URL);
+                if (!resp.ok) throw new Error('Failed to fetch store data.');
+                // Stream JSON parsing for large files
+                const text = await resp.text();
+                // Avoid blocking the main thread
+                await new Promise(resolve => setTimeout(resolve, 0));
+                storeData = JSON.parse(text);
+                loadingElem.style.display = 'none';
+                filterStore();
+            } catch (e) {
+                loadingElem.textContent = 'Failed to load store data.';
+                console.error(e);
+            }
+        }
+
+        // Initial load
+        fetchStoreData();
+    </script>
+</body>
+</html>
