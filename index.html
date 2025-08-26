@@ -137,7 +137,7 @@
     </header>
     <main>
         <section class="search-bar">
-            <input type="text" id="search-input" placeholder="Search for a game, title id...">
+            <input type="text" id="search-input" placeholder="Search For A Game, Title ID...">
             <select id="platform-select"></select>
             <select id="category-select"></select>
             <select id="region-select"></select>
@@ -147,7 +147,7 @@
             </select>
         </section>
         <div id="store-list" class="store-list"></div>
-        <div id="loading" class="loading">Loading store data...</div>
+        <div id="loading" class="loading">Loading Store Data...</div>
     </main>
     <script>
     // --- Configuration ---
@@ -194,8 +194,8 @@
         }
     };
 
-    // Each tsv file will be at: /{version}/{tsvName}.tsv
-    // e.g. /current/PSV_GAMES.tsv
+    // Each tsv file will be at: {version}/{tsvName}.tsv
+    // e.g. current/PSV_GAMES.tsv
 
     // --- UI selectors ---
     const storeList = document.getElementById('store-list');
@@ -265,7 +265,8 @@
         const map = tsvMap[version];
         const promises = [];
         for (const tsvName in map) {
-            const url = `/${version}/${tsvName}.tsv`;
+            // FIX: Use relative path, no leading slash!
+            const url = `${version}/${tsvName}.tsv`;
             promises.push(
                 fetchAndParseTsv(url).then(data => {
                     allTsvData[tsvName] = {
