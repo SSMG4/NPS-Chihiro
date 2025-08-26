@@ -44,6 +44,7 @@
             display: flex;
             gap: 1rem;
             margin-bottom: 2rem;
+            flex-wrap: wrap;
         }
         .search-bar input, .search-bar select {
             padding: 0.6rem;
@@ -108,6 +109,14 @@
             margin: 3rem 0;
             font-size: 1.3rem;
         }
+        .tsv-source {
+            font-size: 0.92rem;
+            color: #aaf;
+            background: rgba(20,40,80,0.5);
+            border-radius: 6px;
+            padding: 4px 9px;
+            margin-left: 1em;
+        }
         @media (max-width: 600px) {
             main {
                 margin: 0.5rem;
@@ -129,155 +138,260 @@
     <main>
         <section class="search-bar">
             <input type="text" id="search-input" placeholder="Search for a game, title id...">
-            <select id="type-select">
-                <option value="">All Types</option>
-                <option value="PSV">PS Vita</option>
-                <option value="PS3">PS3</option>
-                <option value="PSP">PSP</option>
-                <option value="PSX">PS1 Classic</option>
-                <option value="DLC">DLC</option>
-                <option value="Theme">Theme</option>
-            </select>
-            <select id="region-select">
-                <option value="">All Regions</option>
-                <option value="USA">USA</option>
-                <option value="EUR">EUR</option>
-                <option value="JPN">JPN</option>
-                <option value="ASIA">ASIA</option>
-                <option value="CHN">CHN</option>
-                <option value="KOR">KOR</option>
-                <option value="EU">EU</option>
+            <select id="platform-select"></select>
+            <select id="category-select"></select>
+            <select id="region-select"></select>
+            <select id="tsv-version-select">
+                <option value="current">Current TSVs</option>
+                <option value="pending">Pending TSVs</option>
             </select>
         </section>
         <div id="store-list" class="store-list"></div>
         <div id="loading" class="loading">Loading store data...</div>
     </main>
     <script>
-        const STORE_JSON_URL = "https://raw.githubusercontent.com/SSMG4/NPS-Chihiro/master/chihiro.json";
-        // ^^^ Use /master/ not /refs/heads/master/ for raw.githubusercontent.com!
-        const storeList = document.getElementById('store-list');
-        const loadingElem = document.getElementById('loading');
-        const searchInput = document.getElementById('search-input');
-        const typeSelect = document.getElementById('type-select');
-        const regionSelect = document.getElementById('region-select');
+    // --- Configuration ---
 
-        let storeData = [];
-        let filteredStoreData = [];
+    // TSV file mapping, update these if more files/categories are added
+    const tsvMap = {
+        'current': {
+            'PSV_GAMES':        { platform: 'PSV', category: 'GAMES'        },
+            'PSV_DEMOS':        { platform: 'PSV', category: 'DEMOS'        },
+            'PSV_UPDATES':      { platform: 'PSV', category: 'UPDATES'      },
+            'PSV_THEMES':       { platform: 'PSV', category: 'THEMES'       },
+            'PSV_DLCS':         { platform: 'PSV', category: 'DLCS'         },
+            'PSX_GAMES':        { platform: 'PSX', category: 'GAMES'        },
+            'PSM_GAMES':        { platform: 'PSM', category: 'GAMES'        },
+            'PSP_GAMES':        { platform: 'PSP', category: 'GAMES'        },
+            'PSP_DEMOS':        { platform: 'PSP', category: 'DEMOS'        },
+            'PSP_DLCS':         { platform: 'PSP', category: 'DLCS'         },
+            'PSP_UPDATES':      { platform: 'PSP', category: 'UPDATES'      },
+            'PSP_THEMES':       { platform: 'PSP', category: 'THEMES'       },
+            'PS3_GAMES':        { platform: 'PS3', category: 'GAMES'        },
+            'PS3_DEMOS':        { platform: 'PS3', category: 'DEMOS'        },
+            'PS3_DLCS':         { platform: 'PS3', category: 'DLCS'         },
+            'PS3_THEMES':       { platform: 'PS3', category: 'THEMES'       },
+            'PS3_AVATARS':      { platform: 'PS3', category: 'AVATARS'      },
+        },
+        'pending': {
+            'PSV_GAMES':        { platform: 'PSV', category: 'GAMES'        },
+            'PSV_DEMOS':        { platform: 'PSV', category: 'DEMOS'        },
+            'PSV_UPDATES':      { platform: 'PSV', category: 'UPDATES'      },
+            'PSV_THEMES':       { platform: 'PSV', category: 'THEMES'       },
+            'PSV_DLCS':         { platform: 'PSV', category: 'DLCS'         },
+            'PSX_GAMES':        { platform: 'PSX', category: 'GAMES'        },
+            'PSM_GAMES':        { platform: 'PSM', category: 'GAMES'        },
+            'PSP_GAMES':        { platform: 'PSP', category: 'GAMES'        },
+            'PSP_DEMOS':        { platform: 'PSP', category: 'DEMOS'        },
+            'PSP_DLCS':         { platform: 'PSP', category: 'DLCS'         },
+            'PSP_UPDATES':      { platform: 'PSP', category: 'UPDATES'      },
+            'PSP_THEMES':       { platform: 'PSP', category: 'THEMES'       },
+            'PS3_GAMES':        { platform: 'PS3', category: 'GAMES'        },
+            'PS3_DEMOS':        { platform: 'PS3', category: 'DEMOS'        },
+            'PS3_DLCS':         { platform: 'PS3', category: 'DLCS'         },
+            'PS3_THEMES':       { platform: 'PS3', category: 'THEMES'       },
+            'PS3_AVATARS':      { platform: 'PS3', category: 'AVATARS'      },
+        }
+    };
 
-        // Helper: Get image url for entry (no icon in chihiro, so use titleID for NPS or fallback)
-        function getImageUrl(entry) {
-            if (entry.platform && (entry.platform === "PSV" || entry.platform === "PSP" || entry.platform === "PS3" || entry.platform === "PSX")) {
-                // Try NPS CDN: https://nopaystation.com/ts/{titleID}.png
-                return `https://nopaystation.com/ts/${entry.titleID}.png`;
+    // Each tsv file will be at: /{version}/{tsvName}.tsv
+    // e.g. /current/PSV_GAMES.tsv
+
+    // --- UI selectors ---
+    const storeList = document.getElementById('store-list');
+    const loadingElem = document.getElementById('loading');
+    const searchInput = document.getElementById('search-input');
+    const platformSelect = document.getElementById('platform-select');
+    const categorySelect = document.getElementById('category-select');
+    const regionSelect = document.getElementById('region-select');
+    const tsvVersionSelect = document.getElementById('tsv-version-select');
+
+    // --- State ---
+    let allTsvData = {}; // { tsvName: { header:[], rows:[] } }
+    let mergedData = [];
+    let filteredData = [];
+
+    // --- Populate dropdowns ---
+    function populateDropdowns() {
+        // Platform
+        const platforms = new Set();
+        for (const map of Object.values(tsvMap[tsvVersionSelect.value])) {
+            platforms.add(map.platform);
+        }
+        platformSelect.innerHTML = `<option value="">All Platforms</option>` +
+            Array.from(platforms).sort().map(p => `<option value="${p}">${p}</option>`).join('');
+
+        // Category
+        const categories = new Set();
+        for (const map of Object.values(tsvMap[tsvVersionSelect.value])) {
+            categories.add(map.category);
+        }
+        categorySelect.innerHTML = `<option value="">All Categories</option>` +
+            Array.from(categories).sort().map(c => `<option value="${c}">${c}</option>`).join('');
+
+        // Region (collected after loading data)
+        regionSelect.innerHTML = `<option value="">All Regions</option>`;
+    }
+
+    // --- TSV Loader and parser ---
+    async function fetchAndParseTsv(tsvUrl) {
+        const resp = await fetch(tsvUrl);
+        if (!resp.ok) throw new Error('Could not load ' + tsvUrl);
+        const text = await resp.text();
+        const lines = text.trim().split('\n');
+        if (!lines.length) return { header:[], rows:[] };
+        const header = lines[0].split('\t');
+        const rows = [];
+        for (let i = 1; i < lines.length; ++i) {
+            const cols = lines[i].split('\t');
+            if (cols.length < 2) continue;
+            const row = {};
+            for (let j = 0; j < header.length; ++j) {
+                row[header[j]] = cols[j] ?? '';
             }
-            return "https://via.placeholder.com/320x180?text=No+Image";
+            rows.push(row);
         }
+        return { header, rows };
+    }
 
-        function getType(entry) {
-            // Use platform as type
-            if (entry.platform === 'PSV') return 'PS Vita';
-            if (entry.platform === 'PSX') return 'PS1 Classic';
-            if (entry.platform === 'PSP') return 'PSP';
-            if (entry.platform === 'PS3') return 'PS3';
-            if (entry.platform === 'DLC') return 'DLC';
-            if (entry.platform === 'Theme') return 'Theme';
-            return entry.platform || 'Other';
+    async function loadAllTsvs() {
+        loadingElem.textContent = 'Loading store data (please wait)...';
+        storeList.innerHTML = '';
+        allTsvData = {};
+        mergedData = [];
+        filteredData = [];
+
+        const version = tsvVersionSelect.value;
+        const map = tsvMap[version];
+        const promises = [];
+        for (const tsvName in map) {
+            const url = `/${version}/${tsvName}.tsv`;
+            promises.push(
+                fetchAndParseTsv(url).then(data => {
+                    allTsvData[tsvName] = {
+                        ...data,
+                        __platform: map[tsvName].platform,
+                        __category: map[tsvName].category,
+                        __tsv: tsvName
+                    };
+                }).catch(e => {
+                    // If file missing, just skip
+                })
+            );
         }
+        await Promise.all(promises);
 
-        function getRegion(entry) {
-            return entry.region || '';
-        }
-
-        // Render store items
-        function renderStore(data) {
-            storeList.innerHTML = '';
-            if (!data.length) {
-                storeList.innerHTML = '<div style="grid-column: 1/-1; text-align: center; color: #fff8;">No results found.</div>';
-                return;
-            }
-            // Only show first 60 results for performance
-            const displayData = data.slice(0, 60);
-            for (const entry of displayData) {
-                const div = document.createElement('div');
-                div.className = 'store-item';
-                div.innerHTML = `
-                    <img src="${getImageUrl(entry)}" alt="Cover for ${(entry.name||'').replace(/"/g, '&quot;')}" loading="lazy" onerror="this.onerror=null;this.src='https://via.placeholder.com/320x180?text=No+Image';">
-                    <div class="store-item-info">
-                        <div class="store-title">${entry.name || 'Unknown Title'}</div>
-                        <div class="store-id">${entry.titleID || ''}</div>
-                        <div class="store-region">Region: ${getRegion(entry)}</div>
-                        <div class="store-type">Type: ${getType(entry)}</div>
-                        ${entry.link_ok && entry.link ? `<a class="store-link" href="${entry.link}" target="_blank">Download PKG</a>` : ''}
-                    </div>
-                `;
-                storeList.appendChild(div);
-            }
-        }
-
-        // Filter store data
-        function filterStore() {
-            const query = searchInput.value.trim().toLowerCase();
-            const type = typeSelect.value;
-            const region = regionSelect.value;
-            filteredStoreData = storeData.filter(entry => {
-                let matches = true;
-                // Search filter (by name, titleID, contentID)
-                if (query) {
-                    matches = (
-                        (entry.name && entry.name.toLowerCase().includes(query)) ||
-                        (entry.titleID && entry.titleID.toLowerCase().includes(query)) ||
-                        (entry.contentID && entry.contentID.toLowerCase().includes(query))
-                    );
-                }
-                // Type filter (platform)
-                if (matches && type) {
-                    matches = entry.platform === type;
-                }
-                // Region filter
-                if (matches && region) {
-                    matches = entry.region === region;
-                }
-                return matches;
-            });
-            renderStore(filteredStoreData);
-        }
-
-        // Debounce for search input
-        let debounceTimer;
-        function debounceFilter() {
-            clearTimeout(debounceTimer);
-            debounceTimer = setTimeout(filterStore, 200);
-        }
-
-        // Attach listeners
-        searchInput.addEventListener('input', debounceFilter);
-        typeSelect.addEventListener('change', filterStore);
-        regionSelect.addEventListener('change', filterStore);
-
-        // Fetch and process JSON
-        async function fetchStoreData() {
-            loadingElem.textContent = 'Loading store data (large file, please wait)...';
-            try {
-                const resp = await fetch(STORE_JSON_URL);
-                if (!resp.ok) throw new Error('Failed to fetch store data.');
-                const text = await resp.text();
-                // JSON is { games: [...] }
-                const json = JSON.parse(text);
-                if (json && Array.isArray(json.games)) {
-                    storeData = json.games;
-                } else {
-                    throw new Error('Invalid JSON structure: missing .games');
-                }
-                loadingElem.style.display = 'none';
-                filterStore();
-            } catch (e) {
-                loadingElem.textContent = 'Failed to load store data.';
-                console.error(e);
+        // Merge all rows, add platform/category/tsvName meta for filtering
+        mergedData = [];
+        for (const [tsvName, tsv] of Object.entries(allTsvData)) {
+            if (!tsv.rows) continue;
+            for (const row of tsv.rows) {
+                row.__platform = tsv.__platform;
+                row.__category = tsv.__category;
+                row.__tsv = tsv.__tsv;
+                mergedData.push(row);
             }
         }
 
-        // Initial load
-        fetchStoreData();
+        // Update region dropdown with all unique regions
+        const regions = new Set();
+        mergedData.forEach(r => {
+            if (r.Region) regions.add(r.Region);
+        });
+        regionSelect.innerHTML = `<option value="">All Regions</option>` +
+            Array.from(regions).sort().map(r => `<option value="${r}">${r}</option>`).join('');
+
+        loadingElem.style.display = 'none';
+        filterAndRender();
+    }
+
+    // --- Filtering and rendering ---
+    function filterAndRender() {
+        const query = searchInput.value.trim().toLowerCase();
+        const platform = platformSelect.value;
+        const category = categorySelect.value;
+        const region = regionSelect.value;
+
+        filteredData = mergedData.filter(entry => {
+            let matches = true;
+            // Search by name/title id/content id
+            if (query) {
+                matches = (
+                    (entry.Name && entry.Name.toLowerCase().includes(query)) ||
+                    (entry['Title ID'] && entry['Title ID'].toLowerCase().includes(query)) ||
+                    (entry['Content ID'] && entry['Content ID'].toLowerCase().includes(query))
+                );
+            }
+            if (matches && platform) {
+                matches = entry.__platform === platform;
+            }
+            if (matches && category) {
+                matches = entry.__category === category;
+            }
+            if (matches && region) {
+                matches = (entry.Region === region);
+            }
+            return matches;
+        });
+
+        renderStore(filteredData);
+    }
+
+    function getImageUrl(entry) {
+        // Only PSV/PSP/PS3/PSX/PSM games/dlc have title id, use NPS CDN if possible
+        if (entry['Title ID']) {
+            return `https://nopaystation.com/ts/${entry['Title ID']}.png`;
+        }
+        return 'https://via.placeholder.com/320x180?text=No+Image';
+    }
+
+    function renderStore(data) {
+        storeList.innerHTML = '';
+        if (!data.length) {
+            storeList.innerHTML = '<div style="grid-column: 1/-1; text-align: center; color: #fff8;">No results found.</div>';
+            return;
+        }
+        // Only show first 60 results for perf
+        const displayData = data.slice(0, 60);
+        for (const entry of displayData) {
+            const div = document.createElement('div');
+            div.className = 'store-item';
+            div.innerHTML = `
+                <img src="${getImageUrl(entry)}" alt="Cover for ${(entry.Name||'').replace(/"/g, '&quot;')}" loading="lazy" onerror="this.onerror=null;this.src='https://via.placeholder.com/320x180?text=No+Image';">
+                <div class="store-item-info">
+                    <div class="store-title">${entry.Name || 'Unknown Title'}</div>
+                    <div class="store-id">${entry['Title ID'] || ''}</div>
+                    <div class="store-region">Region: ${entry.Region || ''}</div>
+                    <div class="store-type">Type: ${entry.__platform} ${entry.__category}</div>
+                    ${entry['PKG direct link'] ? `<a class="store-link" href="${entry['PKG direct link']}" target="_blank">Download PKG</a>` : ''}
+                    <span class="tsv-source">${entry.__platform} ${entry.__category}</span>
+                </div>
+            `;
+            storeList.appendChild(div);
+        }
+    }
+
+    // --- Debounce for search input ---
+    let debounceTimer;
+    function debounceFilter() {
+        clearTimeout(debounceTimer);
+        debounceTimer = setTimeout(filterAndRender, 200);
+    }
+
+    // --- Event listeners ---
+    searchInput.addEventListener('input', debounceFilter);
+    platformSelect.addEventListener('change', filterAndRender);
+    categorySelect.addEventListener('change', filterAndRender);
+    regionSelect.addEventListener('change', filterAndRender);
+    tsvVersionSelect.addEventListener('change', () => {
+        populateDropdowns();
+        loadAllTsvs();
+    });
+
+    // --- Initial page load ---
+    populateDropdowns();
+    loadAllTsvs();
+
     </script>
 </body>
 </html>
